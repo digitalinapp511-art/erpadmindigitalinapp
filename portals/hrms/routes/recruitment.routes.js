@@ -1,0 +1,14 @@
+const express = require('express');
+const router = express.Router();
+const c = require('../controllers/recruitmentController');
+router.get('/recruitment/analytics', c.recruitmentAnalytics);
+router.get('/recruitment/candidates', c.listCandidates);
+router.get('/recruitment/hiring', c.listHiring);
+router.get('/recruitment/onboarding', c.listOnboarding);
+router.get('/recruitment/candidates/:id', c.getCandidateById);
+router.post('/recruitment/candidates', c.createCandidate);
+router.post('/recruitment/candidates/bulk-upload', c.bulkUploadCandidates);
+router.put('/recruitment/candidates/:id', c.updateCandidate);
+router.delete('/recruitment/candidates/:id', c.deleteCandidate);
+router.delete('/recruitment/candidates', c.bulkDeleteCandidates);
+module.exports = router;

@@ -1,0 +1,236 @@
+// Payroll module schema (Enterprise-Plus)
+// Note: Existing HRMS backend is Mongo-first today. This Prisma schema is provided
+// as the canonical relational design (PostgreSQL) per the Payroll Master Prompt.
+// It can be adopted incrementally when the Postgres/Prisma runtime is enabled.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  HR_FINALIZED
+  FINANCE_APPROVED
+  CANCELLED
+}
+
+enum TaxRegime {
+  OLD
+  NEW
+}
+
+enum SalaryComponentType {
+  EARNING
+  DEDUCTION
+  EMPLOYER_CONTRIBUTION
+}
+
+enum PayslipStatus {
+  GENERATED
+  VOID
+}
+
+model EmployeePayrollProfile {
+  id              String   @id @default(cuid())
+  companyId       String
+  employeeId      String
+
+  pan             String?
+  aadhar          String?
+  uan             String?
+  pfEnabled       Boolean  @default(true)
+  pfWageCeilingOn Boolean  @default(true) // ₹15k ceiling toggle
+  esiEnabled      Boolean  @default(true)
+  taxRegime       TaxRegime @default(NEW)
+
+  bankAccountNo   String?
+  bankIfsc        String?
+  bankName        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  @@index([employeeId])
+  @@index([companyId, employeeId])
+  @@unique([companyId, employeeId])
+}
+
+model SalaryStructure {
+  id             String   @id @default(cuid())
+  companyId      String
+  employeeId     String
+
+  annualCtc      Int      // store in paise? (kept int for simplicity; recommended: use paise as Int)
+  currency       String   @default("INR")
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+
+  // Policy knobs
+  basicPercentOfCtc Int    @default(50) // basic as % of CTC
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  components     SalaryComponent[]
+
+  @@index([employeeId])
+  @@index([companyId, employeeId])
+  @@index([companyId, effectiveFrom])
+}
+
+model SalaryComponent {
+  id              String   @id @default(cuid())
+  salaryStructureId String
+  name            String
+  type            SalaryComponentType
+  monthlyAmount   Int      // use integer amount (recommend paise)
+  isBalancing     Boolean  @default(false) // Special Allowance as balancing figure
+  taxable         Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id])
+
+  @@index([salaryStructureId])
+}
+
+model PayrollRun {
+  id            String   @id @default(cuid())
+  companyId     String
+  monthYear     String   // "YYYY-MM"
+  status        PayrollRunStatus @default(DRAFT)
+
+  initiatedById String?
+  initiatedByName String?
+
+  financeApprovedById String?
+  financeApprovedByName String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  employees     PayrollRunEmployee[]
+
+  @@index([companyId, monthYear])
+  @@unique([companyId, monthYear, deletedAt])
+}
+
+model PayrollRunEmployee {
+  id            String   @id @default(cuid())
+  payrollRunId  String
+  companyId     String
+  employeeId    String
+
+  grossPay      Int
+  lopDays       Float
+  earningsTotal Int
+  deductionsTotal Int
+  employerContribTotal Int
+  netPay        Int
+
+  pfEmployee    Int
+  pfEmployer    Int
+  esiEmployee   Int
+  esiEmployer   Int
+  tds           Int
+
+  breakdownJson Json
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  payrollRun    PayrollRun @relation(fields: [payrollRunId], references: [id])
+
+  @@index([employeeId])
+  @@index([companyId, payrollRunId])
+  @@unique([payrollRunId, employeeId, deletedAt])
+}
+
+model Payslip {
+  id              String   @id @default(cuid())
+  companyId       String
+  employeeId      String
+  monthYear       String   // "YYYY-MM"
+  status          PayslipStatus @default(GENERATED)
+  pdfUrl          String?
+  pdfHash         String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  @@index([employeeId])
+  @@index([companyId, monthYear])
+  @@unique([companyId, employeeId, monthYear, deletedAt])
+}
+
+model InvestmentDeclaration {
+  id          String   @id @default(cuid())
+  companyId   String
+  employeeId  String
+  financialYear String // "YYYY-YY" e.g. "2025-26"
+
+  sec80C      Int @default(0)
+  sec80D      Int @default(0)
+  hraRentPaid Int @default(0)
+  hraCityType String? // metro/non-metro
+  notes       String?
+  proofUrls   String[] @default([])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([employeeId])
+  @@index([companyId, financialYear])
+  @@unique([companyId, employeeId, financialYear, deletedAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String
+  actorUserId String?
+  actorName   String?
+  action      String
+  entityType  String
+  entityId    String
+  beforeJson  Json?
+  afterJson   Json?
+  ip          String?
+  userAgent   String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model BankExport {
+  id          String   @id @default(cuid())
+  companyId   String
+  payrollRunId String
+  bankCode    String   // HDFC, ICICI, SBI...
+  fileFormat  String   // CSV/XLSX
+  fileUrl     String?
+  fileHash    String?
+  generatedById String?
+  generatedByName String?
+
+  createdAt   DateTime @default(now())
+  deletedAt   DateTime?
+
+  @@index([companyId, createdAt])
+  @@index([payrollRunId])
+}
+
