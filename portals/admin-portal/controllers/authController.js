@@ -132,12 +132,12 @@ async function login(req, res) {
 
     // Validate email domain
     const emailLower = email.toLowerCase();
-    if (!emailLower.endsWith('@thrivebrands.ai') && !emailLower.endsWith('@ecosoulhome.com')) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid email domain. Email must end with @thrivebrands.ai or @ecosoulhome.com'
-      });
-    }
+    // if (!emailLower.endsWith('@thrivebrands.ai') && !emailLower.endsWith('@ecosoulhome.com')) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     error: 'Invalid email domain. Email must end with @thrivebrands.ai or @ecosoulhome.com'
+    //   });
+    // }
 
     await connectMongo(LOGIN_DB_NAME);
 
